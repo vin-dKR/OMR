@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Custom slider styling */
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #81b29a;
+  cursor: pointer;
+  border: 2px solid #3d405b;
+  transition: all 0.2s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: #e07a5f;
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #81b29a;
+  cursor: pointer;
+  border: 2px solid #3d405b;
+  transition: all 0.2s ease;
+}
+
+.slider::-moz-range-thumb:hover {
+  background: #e07a5f;
+  transform: scale(1.1);
+}
+
+/* Ensure button visibility and contrast */
+button {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fix for any potential button text visibility issues */
+button:not(:disabled) {
+  color: inherit;
+}
+
+/* Ensure proper button states */
+button:focus {
+  outline: 2px solid #3d405b;
+  outline-offset: 2px;
+}
+
+/* Fix for file input label button */
+label[for] {
+  display: inline-block;
+  position: relative;
+  z-index: 1;
+}
