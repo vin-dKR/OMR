@@ -1,248 +1,207 @@
 export interface GeminiConfig {
-  apiKey: string;
-  model: string;
-  maxTokens: number;
-  temperature: number;
+    apiKey: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
 }
 
 export interface GeminiOMRProcessingRequest {
-  image: string; // base64 encoded image (single image only)
+    image: string; // base64 encoded image (single image only)
 }
 
 export interface GeminiOMRProcessingResponse {
-  success: boolean;
-  data?: {
-    answers: {
-      [questionNumber: string]: 'A' | 'B' | 'C' | 'D' | null;
+    success: boolean;
+    data?: {
+        answers: {
+            [questionNumber: string]: 'A' | 'B' | 'C' | 'D' | null;
+        };
     };
-  };
-  error?: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
+    error?: string;
+    usage?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+    };
 }
 
-// Default Gemini configuration
 export const DEFAULT_GEMINI_CONFIG: GeminiConfig = {
-  apiKey: '',
-  model: 'gemini-1.5-flash', // Good balance of speed and accuracy
-  maxTokens: 8000,
-  temperature: 0.1, // Low temperature for consistent results
+    apiKey: '',
+    model: 'gemini-1.5-flash',
+    maxTokens: 8000,
+    temperature: 0.1,
 };
 
-/**
- * Process OMR images using Gemini Vision API
- */
 export async function processOMRWithGemini(
-  request: GeminiOMRProcessingRequest,
-  config: GeminiConfig
+    request: GeminiOMRProcessingRequest,
+    config: GeminiConfig
 ): Promise<GeminiOMRProcessingResponse> {
-  if (!config.apiKey) {
-    throw new Error('Gemini API key is required');
-  }
+    console.log("ai is workig here .......................")
 
-  try {
-    // Prepare the system prompt for OMR processing
-    const systemPrompt = `You are an expert OMR (Optical Mark Recognition) processor. Your task is to analyze an OMR answer sheet and extract the selected answers for each question.
+    if (!config.apiKey) {
+        throw new Error('Gemini API key is required');
+    }
+
+    try {
+        const systemPrompt = `You are an expert OMR (Optical Mark Recognition) processor specialized in analyzing student answer sheets. Your task is to examine the provided OMR sheet image and accurately detect the filled (dark/blackened) bubbles for each question.
 
 CRITICAL REQUIREMENTS - READ CAREFULLY:
-1. You MUST process ALL 180 questions (001-180) - do not skip any questions
-2. You MUST look at each individual question and identify which bubble (A, B, C, D) is ACTUALLY filled/marked
-3. DO NOT pattern-match or assume answers - analyze each question individually
-4. Return results in EXACT JSON format specified below
-5. DO NOT truncate or limit the response - process everything
+1. Detect ALL questions present in the image - scan the entire sheet and identify question numbers (typically starting from 1 upwards). Do not assume a fixed number; determine based on what is visible.
+2. For EACH question, independently analyze the bubbles/options (A, B, C, D) beside the question number.
+3. Identify ONLY the bubble that is clearly filled/darkened/blackened. If none or multiple are unclear, use null.
+4. DO NOT guess or assume patterns - base decisions solely on visual evidence of filled circles.
+5. Handle variable sheet layouts: questions may be in columns, rows, or sections; look for question numbers and adjacent A/B/C/D options.
+6. If the image quality is poor or parts are obscured, use null for affected questions.
+7. Return results in EXACT JSON format specified below - no additional text.
 
-REQUIRED JSON FORMAT (MUST include ALL 180 questions):
+REQUIRED JSON FORMAT (include ALL detected questions, keyed by their number as strings, e.g., "1", "2"):
 {
   "answers": {
-    "001": "<selected_response>",
-    "002": "<selected_response>",
-    "003": "<selected_response>",
-    "004": "<selected_response>",
-    "005": "<selected_response>",
-    "006": "<selected_response>",
-    "007": "<selected_response>",
-    "008": "<selected_response>",
-    "009": "<selected_response>",
-    "010": "<selected_response>"
-    // ... continue for ALL 180 questions (001-180)
+    "1": "<selected_option>",
+    "2": "<selected_option>",
+    // ... continue for ALL detected questions in numerical order
   }
 }
 
 IMPORTANT NOTES:
-- Question numbers MUST be "001", "002", "003", ..., "180" (ALL questions)
-- Answers should be one of: "A", "B", "C", "D", or null if unclear
-- Use 3-digit format for question numbers (001, 002, etc.)
-- DO NOT skip any questions - process all 180
-- Look for DARK, FILLED circles/bubbles for each question
-- Each question should have ONLY ONE bubble filled (A, B, C, or D)
-- If you can't see a filled bubble clearly, use null
-- Return ONLY valid JSON, no additional text or explanations`;
+- Question keys MUST be strings of the detected question numbers (e.g., "1", "2", ... no padding).
+- Selected options MUST be one of: "A", "B", "C", "D", or null if no clear fill or uncertain.
+- Sort the answers object by question number in ascending order.
+- If no questions are detected, return an empty "answers" object.
+- Focus on precision: only mark a bubble as selected if it's distinctly darker/filled compared to others.
+- Return ONLY valid JSON, no explanations or extra content.`;
 
-    // Prepare the user message with single image
-    const userMessage = {
-      role: 'user' as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Please process this OMR image and extract the selected answers for all 180 questions.
+        const userMessage = {
+            role: 'user' as const,
+            content: [
+                {
+                    type: 'text' as const,
+                    text: `Analyze this OMR student answer sheet image and extract the selected answers.
 
-CRITICAL INSTRUCTIONS FOR BUBBLE DETECTION:
-1. Look at each question individually
-2. Identify which bubble (A, B, C, or D) is ACTUALLY filled/marked
-3. Look for dark, filled circles - these are the selected answers
-4. DO NOT pattern-match or assume answers
-5. Each question should have only ONE bubble filled
-6. If you can't see a filled bubble clearly, use null
+CRITICAL INSTRUCTIONS FOR DETECTION:
+1. Scan for question numbers (e.g., 1, 2, 3...) and their corresponding A/B/C/D bubbles.
+2. For each question, check which bubble is filled/darkened (look for solid black circles).
+3. If a bubble is partially filled or ambiguous, use null to avoid errors.
+4. Process the entire image - detect as many questions as visible.
+5. Assume standard multiple-choice format unless otherwise visible.
 
-IMPORTANT: You must process ALL 180 questions (001-180).
-
-Return ONLY the JSON response, no additional text or explanations.`
-        },
-        // Add single image
-        {
-          type: 'image_url' as const,
-          image_url: {
-            url: `data:image/jpeg;base64,${request.image}`,
-            detail: 'high'
-          }
-        }
-      ]
-    };
-
-    // Make API call to Gemini
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: systemPrompt + '\n\n' + userMessage.content[0].text
-              },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: request.image // Remove data:image/jpeg;base64, prefix
+Return ONLY the JSON response as specified, no additional text.`
+                },
+                {
+                    type: 'image_url' as const,
+                    image_url: {
+                        url: `data:image/jpeg;base64,${request.image}`,
+                        detail: 'high'
+                    }
                 }
-              }
             ]
-          }
-        ],
-        generationConfig: {
-          temperature: config.temperature,
-          maxOutputTokens: config.maxTokens,
-          responseMimeType: 'application/json'
+        };
+
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            {
+                                text: systemPrompt + '\n\n' + userMessage.content[0].text
+                            },
+                            {
+                                inlineData: {
+                                    mimeType: 'image/jpeg',
+                                    data: request.image // Remove data:image/jpeg;base64, prefix
+                                }
+                            }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    temperature: config.temperature,
+                    maxOutputTokens: config.maxTokens,
+                    responseMimeType: 'application/json'
+                }
+            }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const errorMessage = errorData.error?.message || errorData.error?.details?.[0]?.error?.message || response.statusText;
+            throw new Error(`Gemini API error: ${response.status} - ${errorMessage}`);
         }
-      }),
-    });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || errorData.error?.details?.[0]?.error?.message || response.statusText;
-      throw new Error(`Gemini API error: ${response.status} - ${errorMessage}`);
-    }
+        const data = await response.json();
+        console.log("the ai data...................", data)
 
-    const data = await response.json();
-    
-    // Check for Gemini-specific error responses
-    if (data.promptFeedback?.blockReason) {
-      throw new Error(`Gemini content blocked: ${data.promptFeedback.blockReason}`);
-    }
-    console.log('data from ai:', data);
-    
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!content) {
-      throw new Error('No content received from Gemini API');
-    }
-
-    // Parse the JSON response
-    let parsedData;
-    try {
-      // Clean up the response text to extract just the JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-      
-      parsedData = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      throw new Error(`Failed to parse Gemini response: ${parseError}`);
-    }
-
-    // Validate the response structure
-    if (!parsedData.answers || typeof parsedData.answers !== 'object') {
-      throw new Error('Invalid response structure: missing answers');
-    }
-
-    // Ensure all 180 questions are present
-    const expectedQuestions = Array.from({ length: 180 }, (_, i) => (i + 1).toString().padStart(3, '0'));
-    const receivedQuestions = Object.keys(parsedData.answers);
-    
-    if (receivedQuestions.length < 180) {
-      console.warn(`Warning: Only ${receivedQuestions.length} questions received, expected 180`);
-      
-      // Fill in missing questions with null
-      expectedQuestions.forEach(questionNum => {
-        if (!parsedData.answers[questionNum]) {
-          parsedData.answers[questionNum] = null;
+        if (data.promptFeedback?.blockReason) {
+            throw new Error(`Gemini content blocked: ${data.promptFeedback.blockReason}`);
         }
-      });
+
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!content) {
+            throw new Error('No content received from Gemini API');
+        }
+
+        let parsedData;
+        try {
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error('No JSON found in response');
+            }
+            parsedData = JSON.parse(jsonMatch[0]);
+            console.log("still in try blocak....................")
+        } catch (parseError) {
+            throw new Error(`Failed to parse Gemini response: ${parseError}`);
+        }
+
+        if (!parsedData.answers || typeof parsedData.answers !== 'object') {
+            throw new Error('Invalid response structure: missing answers');
+        }
+
+        // Sort answers by question number (ascending)
+        const sortedAnswers = Object.keys(parsedData.answers)
+            .sort((a, b) => parseInt(a) - parseInt(b))
+            .reduce((acc, key) => {
+                acc[key] = parsedData.answers[key];
+                return acc;
+            }, {} as { [key: string]: 'A' | 'B' | 'C' | 'D' | null });
+
+        return {
+            success: true,
+            data: {
+                answers: sortedAnswers
+            },
+            usage: {
+                promptTokens: data.usageMetadata?.promptTokenCount || 0,
+                completionTokens: data.usageMetadata?.completionTokenCount || 0,
+                totalTokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.completionTokenCount || 0)
+            }
+        };
+    } catch (error) {
+        console.error('Gemini API processing error:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
     }
-
-    return {
-      success: true,
-      data: {
-        answers: parsedData.answers
-      },
-      usage: {
-        promptTokens: data.usageMetadata?.promptTokenCount || 0,
-        completionTokens: data.usageMetadata?.completionTokenCount || 0,
-        totalTokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.completionTokenCount || 0)
-      }
-    };
-
-  } catch (error) {
-    console.error('Gemini API processing error:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    };
-  }
 }
 
-/**
- * Validate Gemini API key format
- */
 export function validateGeminiAPIKey(apiKey: string): boolean {
-  return apiKey.length > 20; // Gemini API keys are typically long strings
+    return apiKey.length > 20;
 }
 
-/**
- * Estimate API cost based on image count and processing
- */
 export function estimateGeminiAPICost(
-  imageCount: number,
-  config: GeminiConfig = DEFAULT_GEMINI_CONFIG
+    imageCount: number,
+    config: GeminiConfig = DEFAULT_GEMINI_CONFIG
 ): number {
-  // Gemini pricing (approximate as of 2024)
-  // Note: Gemini pricing is different from OpenAI, this is an estimate
-  const inputCostPer1K = 0.0025; // $0.0025 per 1K input tokens
-  const outputCostPer1K = 0.0075; // $0.0075 per 1K output tokens
-  
-  // Estimate tokens based on image count and complexity
-  const estimatedInputTokens = imageCount * 1000; // High detail images
-  const estimatedOutputTokens = 2000; // JSON response for 180 questions
-  
-  const inputCost = (estimatedInputTokens / 1000) * inputCostPer1K;
-  const outputCost = (estimatedOutputTokens / 1000) * outputCostPer1K;
-  
-  return inputCost + outputCost;
+    const inputCostPer1K = 0.0025;
+    const outputCostPer1K = 0.0075;
+    const estimatedInputTokens = imageCount * 1000;
+    const estimatedOutputTokens = 2000;
+    const inputCost = (estimatedInputTokens / 1000) * inputCostPer1K;
+    const outputCost = (estimatedOutputTokens / 1000) * outputCostPer1K;
+    return inputCost + outputCost;
 }
