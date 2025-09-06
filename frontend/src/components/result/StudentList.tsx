@@ -1,11 +1,11 @@
 import React from 'react';
-import type { StudentResponse } from '../../types/omr';
+import type { Base64Images, StudentResponse } from '../../types/omr';
 
 interface StudentListProps {
     students: StudentResponse[];
     selectedStudent: number;
     onStudentChange: (index: number) => void;
-    base64Images: { answerKey: string; studentFiles: string[] } | null;
+    base64Images: Base64Images | null
 }
 
 const StudentList: React.FC<StudentListProps> = ({ students, selectedStudent, onStudentChange, base64Images }) => {

@@ -1,4 +1,4 @@
-import type { OpenAIConfig } from './openai';
+import type { OpenAIConfig } from '../types/openai';
 import { DEFAULT_OPENAI_CONFIG } from './openai';
 import type { GeminiConfig } from './gemini';
 import { DEFAULT_GEMINI_CONFIG } from './gemini';

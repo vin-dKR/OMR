@@ -35,10 +35,27 @@ export async function processOMRWithGemini(
     request: GeminiOMRProcessingRequest,
     config: GeminiConfig
 ): Promise<GeminiOMRProcessingResponse> {
-    console.log("ai is workig here .......................")
-
     if (!config.apiKey) {
         throw new Error('Gemini API key is required');
+    }
+
+    // Validate image input
+    if (!request.image || typeof request.image !== 'string' || request.image.length < 100) {
+        console.error('Invalid image input:', request.image ? request.image.slice(0, 50) : 'undefined');
+        throw new Error('Image data is empty or too short');
+    }
+
+    // Clean base64 string and validate
+    const cleanBase64 = request.image.replace(/^data:image\/[a-z]+;base64,/, '');
+    if (!cleanBase64) {
+        console.error('Base64 string is empty after cleaning:', request.image.slice(0, 50));
+        throw new Error('Base64 image data is empty after cleaning');
+    }
+    try {
+        atob(cleanBase64); // Validate base64 encoding
+    } catch {
+        console.error('Invalid base64 encoding:', cleanBase64.slice(0, 50));
+        throw new Error('Invalid base64 encoding in image data');
     }
 
     try {
@@ -87,60 +104,65 @@ CRITICAL INSTRUCTIONS FOR DETECTION:
 Return ONLY the JSON response as specified, no additional text.`
                 },
                 {
-                    type: 'image_url' as const,
-                    image_url: {
-                        url: `data:image/jpeg;base64,${request.image}`,
-                        detail: 'high'
+                    type: 'image' as const,
+                    source: {
+                        type: 'base64',
+                        media_type: request.image.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+                        data: cleanBase64
                     }
                 }
             ]
         };
+
+        const requestBody = {
+            contents: [userMessage],
+            systemInstruction: {
+                role: 'system',
+                parts: [{ text: systemPrompt }]
+            },
+            generationConfig: {
+                temperature: config.temperature,
+                maxOutputTokens: config.maxTokens,
+                responseMimeType: 'application/json'
+            }
+        };
+
+        console.log('Gemini API request payload:', JSON.stringify({
+            ...requestBody, contents: [{
+                ...userMessage, content: [
+                    { type: 'text', text: '...' },
+                    {
+                        type: 'image', source: {
+                            ...userMessage.content[1].source, data: cleanBase64.slice(0, 50)
+                        }
+                    }
+                ]
+            }]
+        }))
 
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            {
-                                text: systemPrompt + '\n\n' + userMessage.content[0].text
-                            },
-                            {
-                                inlineData: {
-                                    mimeType: 'image/jpeg',
-                                    data: request.image // Remove data:image/jpeg;base64, prefix
-                                }
-                            }
-                        ]
-                    }
-                ],
-                generationConfig: {
-                    temperature: config.temperature,
-                    maxOutputTokens: config.maxTokens,
-                    responseMimeType: 'application/json'
-                }
-            }),
+            body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorMessage = errorData.error?.message || errorData.error?.details?.[0]?.error?.message || response.statusText;
+            console.error('Gemini API error response:', errorData);
             throw new Error(`Gemini API error: ${response.status} - ${errorMessage}`);
         }
 
         const data = await response.json();
-        console.log("the ai data...................", data)
+        console.log('Gemini API response:', JSON.stringify(data, null, 2));
 
         if (data.promptFeedback?.blockReason) {
             throw new Error(`Gemini content blocked: ${data.promptFeedback.blockReason}`);
         }
 
         const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
         if (!content) {
             throw new Error('No content received from Gemini API');
         }
@@ -152,8 +174,8 @@ Return ONLY the JSON response as specified, no additional text.`
                 throw new Error('No JSON found in response');
             }
             parsedData = JSON.parse(jsonMatch[0]);
-            console.log("still in try blocak....................")
         } catch (parseError) {
+            console.error('Failed to parse Gemini response:', content);
             throw new Error(`Failed to parse Gemini response: ${parseError}`);
         }
 
@@ -161,7 +183,7 @@ Return ONLY the JSON response as specified, no additional text.`
             throw new Error('Invalid response structure: missing answers');
         }
 
-        // Sort answers by question number (ascending)
+        // Sort answers by question number
         const sortedAnswers = Object.keys(parsedData.answers)
             .sort((a, b) => parseInt(a) - parseInt(b))
             .reduce((acc, key) => {
@@ -176,8 +198,8 @@ Return ONLY the JSON response as specified, no additional text.`
             },
             usage: {
                 promptTokens: data.usageMetadata?.promptTokenCount || 0,
-                completionTokens: data.usageMetadata?.completionTokenCount || 0,
-                totalTokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.completionTokenCount || 0)
+                completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
+                totalTokens: (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.candidatesTokenCount || 0)
             }
         };
     } catch (error) {
@@ -195,7 +217,6 @@ export function validateGeminiAPIKey(apiKey: string): boolean {
 
 export function estimateGeminiAPICost(
     imageCount: number,
-    config: GeminiConfig = DEFAULT_GEMINI_CONFIG
 ): number {
     const inputCostPer1K = 0.0025;
     const outputCostPer1K = 0.0075;

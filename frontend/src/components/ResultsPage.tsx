@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTestContext } from '../contexts/TestContext';
-import type { OMRData, OMRResponse } from '../types/omr';
+import type { Base64Images, OMRData, OMRResponse } from '../types/omr';
 import { getAllOMRSessions, saveProcessingHistory } from '../utils/storage';
 import { processOMRWithOpenAI } from '../utils/openai';
 import { processOMRWithGemini } from '../utils/gemini';
@@ -56,10 +56,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
     const [processingStep, setProcessingStep] = useState<string>('');
     const [processingProgress, setProcessingProgress] = useState<number>(0);
     const [currentOMRData, setCurrentOMRData] = useState<OMRData | null>(null);
-    const [base64Images, setBase64Images] = useState<{
-        answerKey: string;
-        studentFiles: string[];
-    } | null>(null);
+    const [base64Images, setBase64Images] = useState<Base64Images | null>(null);
 
     const processingData = location.state as ProcessingData;
     console.log("processingData ................", editableResponses)
@@ -108,12 +105,14 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
             // Initialize OMR data without answer key image
             const initialOMRData = {
                 answerKey: {
-                    answers: testData.questions.map((q) => ({
-                        questionNumber: q.questionNumber,
-                        questionId: q.questionId,
-                        selectedAnswer: q.correctAnswer || null, // Use correctAnswer from testData
-                        confidence: 1.0,
-                    })),
+                    answers: testData.questions
+                        .sort((a, b) => a.questionNumber - b.questionNumber)
+                        .map((q) => ({
+                            questionNumber: q.questionNumber,
+                            questionId: q.questionId,
+                            selectedAnswer: q.question.answer || null,
+                            confidence: 1.0,
+                        })),
                     processedAt: new Date(),
                 },
                 studentResponses: processingData.studentFiles.map((file, index) => ({
@@ -133,12 +132,12 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
             const base64Data = {
                 studentFiles: processingData.studentFiles.map((f) => f.data),
             };
-            if (base64Data.studentFiles.some(file => !file || typeof file !== 'string')) {
-                console.error('Invalid base64 data for student files:', base64Data.studentFiles);
+            if (base64Data.studentFiles.some((file) => !file || typeof file !== 'string' || file.length < 100)) {
+                console.error('Invalid base64 data for student files:', base64Data.studentFiles.map((f, i) => ({ index: i, data: f ? f.slice(0, 50) : 'undefined' })));
                 throw new Error('Missing or invalid image data in student files');
             }
             setBase64Images(base64Data);
-            setCurrentOMRData(initialOMRData);
+            setCurrentOMRData(initialOMRData as OMRData);
             setProcessingStep('Processing student response sheets...');
             setProcessingProgress(10);
 
@@ -165,10 +164,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
                 } else {
                     const cleanStudentImage = studentFile.data.replace(/^data:image\/[a-z]+;base64,/, '');
                     if (!cleanStudentImage) {
-                        console.error('Invalid student image base64:', studentFile.data);
+                        console.error('Invalid student image base64 for file', studentFile.name, ':', studentFile.data.slice(0, 50));
                         throw new Error(`Invalid student image data for student ${i + 1}`);
                     }
-                    console.log('Sending student image base64 (first 50 chars):', cleanStudentImage.slice(0, 50));
+                    console.log(`Sending student ${i + 1} image base64 (first 50 chars):`, cleanStudentImage.slice(0, 50));
                     const studentRequest = { image: cleanStudentImage };
                     const response = await processOMRWithGemini(studentRequest, processingData.geminiConfig);
                     if (response.success && response.data) {
@@ -182,12 +181,14 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
                     id: `student-${i + 1}`,
                     name: studentInfos[i]?.name || `Student ${i + 1}`,
                     imageFile: new File([], studentFile.name),
-                    responses: testData.questions.map((q) => ({
-                        questionNumber: q.questionNumber,
-                        questionId: q.questionId,
-                        selectedAnswer: studentData ? studentData[q.questionNumber.toString()] || null : null,
-                        confidence: 0.8,
-                    })),
+                    responses: testData.questions
+                        .sort((a, b) => a.questionNumber - b.questionNumber)
+                        .map((q) => ({
+                            questionNumber: q.questionNumber,
+                            questionId: q.questionId,
+                            selectedAnswer: studentData ? studentData[q.questionNumber.toString()] || null : null,
+                            confidence: 0.8,
+                        })),
                     processedAt: new Date(),
                     isProcessing: false,
                 };
@@ -203,7 +204,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
                 isProcessing: false,
             };
 
-            setCurrentOMRData(finalOMRData);
+            setCurrentOMRData(finalOMRData as OMRData);
             setProcessingStep('Saving results...');
             setProcessingProgress(95);
 
@@ -232,7 +233,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
 
             if (studentInfos.length === 0) {
                 setStudentInfos(
-                    updatedStudentResponses.map((student, index) => ({
+                    updatedStudentResponses.map((_student, index) => ({
                         name: index === 0 ? 'Alice Johnson' : `Student ${index + 1}`,
                         className: index === 0 ? 'Class 10A' : '',
                         rollNumber: index === 0 ? 'STU001' : '',
@@ -304,7 +305,6 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
     return (
         <div className="min-h-screen bg-eggshell p-6">
             <div className="max-w-7xl mx-auto">
-                hii
                 <Header
                     sessionId={currentOMRData?.sessionId || omrData.sessionId}
                     isProcessing={isProcessing}

@@ -86,8 +86,8 @@ const APIConfig: React.FC<APIConfigProps> = ({
     const isOpenAIValid = validateOpenAIAPIKey(openAIKey);
     const isGeminiValid = validateGeminiAPIKey(geminiKey);
     const estimatedCost = selectedProvider === 'openai'
-        ? estimateOpenAIAPICost(imageCount, openAIConfig)
-        : estimateGeminiAPICost(imageCount, geminiConfig);
+        ? estimateOpenAIAPICost(imageCount)
+        : estimateGeminiAPICost(imageCount);
 
     return (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">

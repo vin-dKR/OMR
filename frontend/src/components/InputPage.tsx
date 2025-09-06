@@ -15,11 +15,9 @@ const InputPage: React.FC = () => {
     const [dragActive, setDragActive] = useState(false);
     const [openAIConfig, setOpenAIConfig] = useState<OpenAIConfig>(DEFAULT_OPENAI_CONFIG);
     const [geminiConfig, setGeminiConfig] = useState<GeminiConfig>(DEFAULT_GEMINI_CONFIG);
-    const [selectedProvider, setSelectedProvider] = useState<'openai' | 'gemini'>('openai');
+    const [selectedProvider, setSelectedProvider] = useState<'openai' | 'gemini'>('gemini');
     const [testId, setTestId] = useState<string>("");
     const { fetchTestResponse } = useTestContext();
-
-    console.log("Student files:", studentFiles);
 
     useEffect(() => {
         const savedOpenAIConfig = loadOpenAIConfig();
@@ -31,12 +29,23 @@ const InputPage: React.FC = () => {
     }, []);
 
     const handleStudentFilesUpload = (files: FileList) => {
-        const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+        const imageFiles = Array.from(files).filter(file => {
+            const isImage = file.type === 'image/jpeg' || file.type === 'image/png';
+            if (!isImage) {
+                console.warn(`File ${file.name} is not a valid image (type: ${file.type})`);
+            }
+            return isImage;
+        });
         if (imageFiles.length > 30) {
             alert('Maximum 30 student response sheets allowed');
             return;
         }
+        if (imageFiles.length === 0) {
+            alert('No valid JPEG or PNG files selected');
+            return;
+        }
         setStudentFiles(imageFiles);
+        console.log('Uploaded student files:', imageFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -62,10 +71,17 @@ const InputPage: React.FC = () => {
             reader.onload = () => {
                 const result = reader.result as string;
                 const base64 = result.split(',')[1];
-                if (!base64) {
-                    reject(new Error(`Failed to convert file ${file.name} to base64`));
+                if (!base64 || base64.length < 100) { // Basic length check
+                    reject(new Error(`Invalid base64 data for file ${file.name}`));
+                    return;
                 }
-                resolve(base64);
+                // Basic validation of base64 string
+                try {
+                    atob(base64);
+                    resolve(base64);
+                } catch {
+                    reject(new Error(`Corrupted base64 data for file ${file.name}`));
+                }
             };
             reader.onerror = () => reject(new Error(`Error reading file ${file.name}`));
             reader.readAsDataURL(file);
@@ -94,11 +110,19 @@ const InputPage: React.FC = () => {
         try {
             await fetchTestResponse({ testId });
             const studentFilesBase64 = await Promise.all(
-                studentFiles.map(async (file) => ({
-                    name: file.name,
-                    type: file.type,
-                    data: await imageToBase64(file)
-                }))
+                studentFiles.map(async (file) => {
+                    try {
+                        const base64 = await imageToBase64(file);
+                        console.log(`Base64 for ${file.name} (first 50 chars):`, base64.slice(0, 50));
+                        return {
+                            name: file.name,
+                            type: file.type,
+                            data: base64
+                        };
+                    } catch (error) {
+                        throw new Error(`Failed to process file ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    }
+                })
             );
 
             const sessionId = `session-${Date.now()}`;
@@ -183,7 +207,7 @@ const InputPage: React.FC = () => {
                                     </p>
                                     <input
                                         type="file"
-                                        accept="image/*"
+                                        accept="image/jpeg,image/png"
                                         multiple
                                         onChange={(e) => e.target.files && handleStudentFilesUpload(e.target.files)}
                                         className="hidden"

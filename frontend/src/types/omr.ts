@@ -1,4 +1,5 @@
 export interface OMRResponse {
+    questionId: string
     questionNumber: number;
     selectedAnswer: 'A' | 'B' | 'C' | 'D' | null;
     confidence: number;
@@ -14,7 +15,7 @@ export interface StudentResponse {
 }
 
 export interface AnswerKey {
-    imageFile: File;
+    imageFile?: File;
     answers: OMRResponse[];
     processedAt: Date;
 }
@@ -31,4 +32,9 @@ export interface ProcessingResult {
     success: boolean;
     data?: OMRData;
     error?: string;
+}
+
+export interface Base64Images {
+    answerKey?: string;
+    studentFiles: string[];
 }
