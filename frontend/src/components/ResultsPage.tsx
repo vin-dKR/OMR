@@ -155,7 +155,9 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
                         studentResponseImages: [studentFile.data],
                         preprocessingOptions: { contrast: 1.0, brightness: 0, noiseReduction: 0, sharpen: 0 },
                     };
+
                     const response = await processOMRWithOpenAI(studentRequest, processingData.openAIConfig);
+
                     if (response.success && response.data) {
                         studentData = response.data.studentResponses[0].responses;
                     } else {
@@ -168,8 +170,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ omrData, onBackToInput }) => 
                         throw new Error(`Invalid student image data for student ${i + 1}`);
                     }
                     console.log(`Sending student ${i + 1} image base64 (first 50 chars):`, cleanStudentImage.slice(0, 50));
+
                     const studentRequest = { image: cleanStudentImage };
                     const response = await processOMRWithGemini(studentRequest, processingData.geminiConfig);
+
                     if (response.success && response.data) {
                         studentData = response.data.answers;
                     } else {

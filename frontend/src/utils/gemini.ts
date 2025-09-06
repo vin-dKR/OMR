@@ -87,12 +87,13 @@ IMPORTANT NOTES:
 - Focus on precision: only mark a bubble as selected if it's distinctly darker/filled compared to others.
 - Return ONLY valid JSON, no explanations or extra content.`;
 
-        const userMessage = {
-            role: 'user' as const,
-            content: [
+        const requestBody = {
+            contents: [
                 {
-                    type: 'text' as const,
-                    text: `Analyze this OMR student answer sheet image and extract the selected answers.
+                    role: 'user',
+                    parts: [
+                        {
+                            text: `Analyze this OMR student answer sheet image and extract the selected answers.
 
 CRITICAL INSTRUCTIONS FOR DETECTION:
 1. Scan for question numbers (e.g., 1, 2, 3...) and their corresponding A/B/C/D bubbles.
@@ -102,20 +103,16 @@ CRITICAL INSTRUCTIONS FOR DETECTION:
 5. Assume standard multiple-choice format unless otherwise visible.
 
 Return ONLY the JSON response as specified, no additional text.`
-                },
-                {
-                    type: 'image' as const,
-                    source: {
-                        type: 'base64',
-                        media_type: request.image.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
-                        data: cleanBase64
-                    }
+                        },
+                        {
+                            inlineData: {
+                                mimeType: request.image.includes('data:image/png') ? 'image/png' : 'image/jpeg',
+                                data: cleanBase64
+                            }
+                        }
+                    ]
                 }
-            ]
-        };
-
-        const requestBody = {
-            contents: [userMessage],
+            ],
             systemInstruction: {
                 role: 'system',
                 parts: [{ text: systemPrompt }]
@@ -126,19 +123,6 @@ Return ONLY the JSON response as specified, no additional text.`
                 responseMimeType: 'application/json'
             }
         };
-
-        console.log('Gemini API request payload:', JSON.stringify({
-            ...requestBody, contents: [{
-                ...userMessage, content: [
-                    { type: 'text', text: '...' },
-                    {
-                        type: 'image', source: {
-                            ...userMessage.content[1].source, data: cleanBase64.slice(0, 50)
-                        }
-                    }
-                ]
-            }]
-        }))
 
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
             method: 'POST',
@@ -151,7 +135,7 @@ Return ONLY the JSON response as specified, no additional text.`
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorMessage = errorData.error?.message || errorData.error?.details?.[0]?.error?.message || response.statusText;
-            console.error('Gemini API error response:', errorData);
+            console.error('Gemini API error response:', JSON.stringify(errorData, null, 2));
             throw new Error(`Gemini API error: ${response.status} - ${errorMessage}`);
         }
 
