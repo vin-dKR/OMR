@@ -15,6 +15,8 @@ interface TestContextType {
     }) => Promise<void>;
 }
 
+const API_URL = import.meta.env.VITE_API_URL
+
 const TestContext = createContext<TestContextType | undefined>(undefined);
 
 export const TestProvider = ({ children }: { children: React.ReactNode }) => {
@@ -29,7 +31,7 @@ export const TestProvider = ({ children }: { children: React.ReactNode }) => {
         setError(null);
         try {
             console.log("fetchTestResponse setTestData")
-            const response = await fetch('http://localhost:3000/api/omr/fetchTestbyId', {
+            const response = await fetch(`${API_URL}/api/omr/fetchTestbyId`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -63,7 +65,7 @@ export const TestProvider = ({ children }: { children: React.ReactNode }) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch('http://localhost:3000/api/omr/checker', {
+            const response = await fetch(`${API_URL}/api/omr/checker`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
