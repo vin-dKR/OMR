@@ -1,20 +1,25 @@
+import type { OpenAIConfig } from '../types/openai';
+import type { GeminiConfig } from '../utils/gemini';
+import type { Base64Images, OMRData, OMRResponse } from '../types/omr';
+
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useTestContext } from '../contexts/TestContext';
-import type { Base64Images, OMRData, OMRResponse } from '../types/omr';
-import { getAllOMRSessions, saveProcessingHistory } from '../utils/storage';
+
 import { processOMRWithOpenAI } from '../utils/openai';
 import { processOMRWithGemini } from '../utils/gemini';
-import type { GeminiConfig } from '../utils/gemini';
+
 import Header from './result/Header';
-import ProcessingProgress from './result/ProcessingProgress';
 import StudentList from './result/StudentList';
-import StudentInfoForm from './result/StudentInfoForm';
 import OMRImageViewer from './result/OMRImageViewer';
-import EditableAnswers from './result/EditableAnswers';
-import SubmitVerifiedButton from './result/SubmitVerifiedButton';
 import SessionSummary from './result/SessionSummary';
-import type { OpenAIConfig } from '../types/openai';
+import EditableAnswers from './result/EditableAnswers';
+import StudentInfoForm from './result/StudentInfoForm';
+import ProcessingProgress from './result/ProcessingProgress';
+import SubmitVerifiedButton from './result/SubmitVerifiedButton';
+
+import { useTestContext } from '../contexts/TestContext';
+import { getAllOMRSessions, saveProcessingHistory } from '../utils/storage';
+
 
 interface ProcessingData {
     sessionId: string;

@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { createContext, useContext, useState } from 'react';
 import type { TestData, TestResponse } from '../types/test';
 
@@ -5,7 +6,7 @@ interface TestContextType {
     loading: boolean;
     error: string | null;
     testData: TestData | null;
-    fetchTestResponse: (payload: { testId: string; }) => Promise<void>;
+    fetchTestResponse: (payload: { testId: string }) => Promise<void>;
     submitVerifiedAnswers: (payload: {
         testId: string;
         answers: { questionId: string; selectedAnswer: string }[];
@@ -15,7 +16,8 @@ interface TestContextType {
     }) => Promise<void>;
 }
 
-const API_URL = import.meta.env.VITE_API_URL
+const API_URL = import.meta.env.VITE_API_URL;
+console.log("api-----", API_URL)
 
 const TestContext = createContext<TestContextType | undefined>(undefined);
 
@@ -24,36 +26,29 @@ export const TestProvider = ({ children }: { children: React.ReactNode }) => {
     const [error, setError] = useState<string | null>(null);
     const [testData, setTestData] = useState<TestData | null>(null);
 
-    const fetchTestResponse = async (payload: {
-        testId: string;
-    }) => {
+    const fetchTestResponse = async (payload: { testId: string }) => {
         setLoading(true);
         setError(null);
         try {
-            console.log("fetchTestResponse setTestData")
-            const response = await fetch(`${API_URL}/api/omr/fetchTestbyId`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+            const response = await axios.post<TestResponse>(
+                `${API_URL}/api/omr/fetchTestbyId`,
+                payload,
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                }
+            );
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const result: TestResponse = await response.json();
-            if (result.status === 200) {
-                setTestData(result.data);
+            if (response.status === 200) {
+                setTestData(response.data.data);
             } else {
-                setError(result.error || 'Failed to fetch test response');
+                setError(response.data.error || 'Failed to fetch test response');
             }
         } catch (err: any) {
-            setError(err.message || 'An error occurred while fetching test response');
+            setError(err.response?.data?.error || err.message || 'An error occurred while fetching test response');
         } finally {
             setLoading(false);
         }
     };
-
 
     const submitVerifiedAnswers = async (payload: {
         testId: string;
@@ -65,26 +60,24 @@ export const TestProvider = ({ children }: { children: React.ReactNode }) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_URL}/api/omr/checker`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+            const response = await axios.post(
+                `${API_URL}/api/omr/checker`,
+                payload,
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                }
+            );
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            if (result.status !== 200) {
-                setError(result.error || 'Failed to submit verified answers');
+            if (response.status !== 200) {
+                setError(response.data.error || 'Failed to submit verified answers');
             }
         } catch (err: any) {
-            setError(err.message || 'An error occurred while submitting verified answers');
+            setError(err.response?.data?.error || err.message || 'An error occurred while submitting verified answers');
         } finally {
             setLoading(false);
         }
     };
+
     return (
         <TestContext.Provider value={{ testData, loading, error, fetchTestResponse, submitVerifiedAnswers }}>
             {children}
@@ -97,5 +90,5 @@ export const useTestContext = () => {
     if (!context) {
         throw new Error('useTestContext must be used within a TestProvider');
     }
-    return context
-}
+    return context;
+};
